@@ -1,11 +1,8 @@
 ---
 title: "HW8"
-author: "phil newsome"
+author: "phil newsome (12.2.2024)"
 echo: false
-format:
-  gfm:
-    toc: true
-    html-math-method: webtex
+format:pdf
 ---
 
 ```{r}
