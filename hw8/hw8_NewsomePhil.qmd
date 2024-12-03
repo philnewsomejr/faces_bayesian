@@ -2,10 +2,14 @@
 title: "HW8"
 author: "phil newsome"
 echo: false
-format: pdf
+format:
+  gfm:
+    toc: true
+    html-math-method: webtex
 ---
 
 ```{r}
+#| message: false
 library(here)
 library(cmdstanr)
 library(dplyr)
@@ -29,7 +33,7 @@ Does fear recognition accuracy predict prenatal-postpartum change in amygdala re
 
 ```{r}
 # data import
-faces <- read.csv("faces_bayesian.csv")
+faces <- read.csv(here("faces_bayesian.csv")
 faces <- na.omit(faces)
 
 ```
