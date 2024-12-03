@@ -1,0 +1,131 @@
+---
+title: "HW8"
+author: "phil newsome"
+echo: false
+format: pdf
+---
+
+```{r}
+library(here)
+library(cmdstanr)
+library(dplyr)
+library(brms)
+library(modelsummary)
+library(posterior)
+library(bayesplot)
+```
+
+# Research Question
+
+Does fear recognition accuracy predict prenatal-postpartum change in amygdala responses to fear faces in first-time fathers?
+
+# Variables
+
+-   'hit_rate' : unbiased hit-rate (raw accuracy and differential accuracy combined)
+
+-   'lamyg_mean_change' : change in left amygdala activation to fear\>rest contrast
+
+-   'ramyg_mean_change' : change in right amygdala activation to fear\>rest contrast
+
+```{r}
+# data import
+faces <- read.csv("faces_bayesian.csv")
+faces <- na.omit(faces)
+
+```
+
+Table \@tbl-summ-var shows summary statistics
+
+```{r}
+# variable summary 
+#| label: tbl-summ-var
+#| tbl-cap: Summary Statistics 
+datasummary(
+  hit_rate + ramyg_mean_change + lamyg_mean_change ~ 
+  N + Mean + SD + Min + Max + Histogram,
+  data = faces
+)
+
+```
+
+# Model (w. left amygdala)
+
+Let $Y$ = hit_rate, $G$ = lamyg_mean_change
+
+model (left) $$
+\begin{aligned}
+    Y_i & \sim N(\mu_i, \sigma) \\
+    \mu_i & = \beta_0 + \beta_1 G_i
+\end{aligned}
+$$
+
+priors: $$
+\begin{aligned}
+    \beta_0 & \sim N(0.6, .3) \\
+    \beta_1 & \sim N(0, 0.2) \\
+    \sigma & \sim N^+(0, 1)
+\end{aligned}
+$$
+
+# Analysis
+
+```{r}
+#| include: false
+mod1 <- cmdstan_model(here("faces_bayesian_model.stan"))
+
+# 1. Form the data list for Stan
+stan_dat <- list(
+  N = nrow(faces),  # Total number of observations
+  hit_rate = faces$hit_rate,  # The dependent variable (hit_rate)
+  lamyg_mean_change = faces$lamyg_mean_change  # The predictor variable (lamyg_mean_change)
+)
+
+# 3. Run Stan (fit the model)
+fit <- mod1$sample(
+  data = stan_dat,
+  seed = 1234,  # for reproducibility
+  iter_warmup = 1000,  # Number of warmup iterations
+  iter_sampling = 2000,  # Number of sampling iterations
+  chains = 4  # Number of chains
+)
+
+```
+
+# Results
+
+As shown in the rank histogram in \@fig-rank-hist-fit below, the chains mixed well.
+
+```{r}
+#| label: fig-rank-hist-fit
+#| fig-cap: Rank histogram of the posterior distributions of model parameters.
+as_draws(fit) |>
+    mcmc_rank_hist(pars = c("beta0", "beta1", "sigma"))
+```
+
+```{r}
+as_draws(fit) |>
+  mcmc_dens(pars = c("beta0", "beta1", "sigma"))
+
+```
+
+```{r}
+as_draws(fit) |>
+  mcmc_trace(pars = c("beta0", "beta1", "sigma"))
+
+```
+
+\@tbl-summ-fit shows the posterior distributions
+
+```{r}
+#| label: tbl-summ-fit
+#| tbl-cap: Posterior summary of the model parameters.
+
+draws <- as_draws(fit)
+
+summ_fit <- fit$draws() |>
+    subset_draws(variable = c("beta0", "beta1", "sigma")) |>
+    summarise_draws()
+knitr::kable(summ_fit, digits = 2)
+```
+
+Evidence for a positive relationships between fear recognition accuracy and left amygdala response change is inconclusive, with a posterior mean of 0.03 and a 90% CI of \[-0.23, 0.29\].
