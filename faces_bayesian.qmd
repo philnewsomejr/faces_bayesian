@@ -1,0 +1,373 @@
+---
+title: "FACES"
+author: "phil newsome (12.5.2024)"
+format: pdf
+echo: false
+---
+
+```{r}
+library(here)
+library(cmdstanr)
+library(dplyr)
+library(brms)
+library(modelsummary)
+library(posterior)
+library(bayesplot)
+library(ggplot2)
+library(brms)
+```
+
+# Research Questions
+
+(1) Does machiavellianism predict fear recognition accuracy at the prenatal timepoint? (linear regression model)
+(2) Does machiavellianism and fear accuracy predict change in amygdala response to fear faces across the transition to fatherhood? (multiple regression model)
+
+# Variables
+
+-   'hit_rate_pre' : prenatal unbiased hit-rate (raw accuracy and differential accuracy combined)
+-   'raw_accuracy': fear recognition accuracy
+-   'lamyg_mean_change' : change in left amygdala activation to fear\>rest contrast
+-   'ramyg_mean_change' : change in right amygdala activation to fear\>rest contrast
+-   'me_pre': prenatal machiavellianism
+
+```{r}
+# data import
+faces <- read.csv("faces_bayesian_final.csv")
+#faces <- na.omit(faces)
+
+#calculate amygdala response change
+faces$lamyg_change <- faces$lamyg_mean_postpart - faces$lamyg_mean_prenat
+faces$ramyg_change <- faces$ramyg_mean_postpart - faces$ramyg_mean_prenat
+
+```
+
+# More Variables
+
+-   'lamyg_mean_change' : change in left amygdala activation to fear\>rest contrast
+-   'ramyg_mean_change' : change in right amygdala activation to fear\>rest contrast
+
+Table \@tbl-summ-var shows summary statistics
+
+```{r}
+# variable summary 
+#| label: tbl-summ-var
+#| tbl-cap: Summary Statistics 
+datasummary(
+  hit_rate_pre + hit_rate_post + raw_accuracy + me_pre + lamyg_mean_prenat + ramyg_mean_prenat + lamyg_mean_postpart + ramyg_mean_postpart + lamyg_change + ramyg_change ~ 
+  N + Mean + SD + Min + Max + Histogram,
+  data = faces
+)
+
+```
+
+```{r}
+# plotting change in amygdala response to fear faces
+
+# left amygdala change
+ggplot(faces, aes(x = lamyg_mean_prenat, y = lamyg_mean_postpart)) +
+  geom_point(color = "black", fill = "white", shape = 21, size = 2, stroke = 0.5) + 
+  geom_smooth(method = "lm", color = "black", se = TRUE) + 
+  labs(
+    title = NULL,
+    x = "Pre L Amyg (% Signal Change)",
+    y = "Post L Amyg (% Signal Change)"
+  ) +
+   theme_minimal() +
+  theme(
+    panel.grid = element_blank() 
+  )
+
+# right amygdala change
+ggplot(faces, aes(x = ramyg_mean_prenat, y = ramyg_mean_postpart)) +
+  geom_point(color = "black", fill = "white", shape = 21, size = 2, stroke = 0.5) + 
+  geom_smooth(method = "lm", color = "black", se = TRUE) + 
+  labs(
+    title = NULL,
+    x = "Pre L Amyg (% Signal Change)",
+    y = "Post L Amyg (% Signal Change)"
+  ) +
+   theme_minimal() +
+  theme(
+    panel.grid = element_blank() # Removes all gridlines
+  )
+```
+
+# Model 1
+
+Let $RAW$ = raw_accuracy, $ME$ = me_pre
+
+$$
+\begin{aligned}
+    RAW_i & \sim N(\mu_i, \sigma) \\
+    \mu_i & = \beta_0 + \beta_1 ME_i
+\end{aligned}
+$$
+
+priors: $$
+\begin{aligned}
+    \beta_0 & \sim N(0, 2) \\
+    \beta_1 & \sim N(0, 10) \\
+    \sigma & \sim \text{Student-t}(4, 0, 1)
+\end{aligned}$$
+
+# Model 2
+
+Let $RAW$ = raw_accuracy, $ME$ = me_pre, $\Delta LAMY$ = lamyg_change
+
+$$
+\begin{aligned}
+    \Delta LAMY & \sim N(\mu_i, \sigma) \\
+    \mu_i & = \beta_0 + \beta_1 ME_i + \beta_2 RAW_i
+\end{aligned}
+$$
+priors: $$
+\begin{aligned}
+    \beta_0 & \sim N(0, 2) \\
+    \beta_1 & \sim N(0, 1) \\
+    \beta_2 & \sim N(0, 10) \\
+    \sigma & \sim \text{Student-t}(4, 0, 1)
+\end{aligned}$$
+
+# Model 3
+
+Let $RAW$ = raw_accuracy, $ME$ = me_pre, $\Delta RAMY$ = ramyg_change
+
+$$
+\begin{aligned}
+    \Delta RAMY & \sim N(\mu_i, \sigma) \\
+    \mu_i & = \beta_0 + \beta_1 ME_i + \beta_2 RAW_i
+\end{aligned}
+$$
+
+priors: $$
+\begin{aligned}
+    \beta_0 & \sim N(0, 2) \\
+    \beta_1 & \sim N(0, 1) \\
+    \beta_2 & \sim N(0, 10) \\
+    \sigma & \sim \text{Student-t}(4, 0, 1)
+\end{aligned}$$
+
+# Model 1 Analysis
+
+```{r m1 analysis}
+m1 <-
+    brm(raw_accuracy ~ me_pre,
+        data = faces,
+        prior = prior(normal(0, 2), class = "b") +          
+            prior(normal(0, 10), class = "Intercept") +     
+            prior(student_t(4, 0, 3), class = "sigma"),     
+        seed = 941,
+        iter = 4000,
+        file = "m1"
+    )
+```
+
+## Results
+
+The chains mixed well.
+
+```{r m1 result}
+summary(m1)
+
+color_scheme_set("darkgray")
+pp_check(m1)
+
+draws_df_m1 <- as_draws_df(m1)
+mcmc_trace(draws_df_m1, pars = c("b_Intercept", "b_me_pre", "sigma"))
+```
+
+\@tbl-summ-fit shows the posterior distributions
+
+```{r m1 table, posterior summary}
+#| label: tbl-summ-fit
+#| tbl-cap: Posterior summary of the model parameters.
+
+# Convert the model to draws
+draws <- as_draws(m1)
+
+# Summarize the draws for the selected parameters
+summ_fit1 <- draws |> 
+  subset_draws(variable = c("b_Intercept", "b_me_pre", "sigma")) |> 
+  summarise_draws()
+
+write.csv(summ_fit1, "summ_fit1.csv", row.names = FALSE)
+
+# Create a summary table with knitr
+knitr::kable(summ_fit1, digits = 2)
+```
+
+```{r}
+# marginal model plot to determine relationship between predictor and outcome
+
+pp_check(m1, type = "intervals",
+         x = "me_pre") +
+    geom_smooth(se = FALSE, col = "blue") +
+    geom_smooth(aes(y = y_obs), se = FALSE, col = "red", linetype = "dashed")
+
+
+```
+
+# Model 2 Analysis
+
+```{r m2 analysis}
+m2 <- brm(
+  lamyg_change ~ raw_accuracy + me_pre ,
+  data = faces,
+  prior = prior(normal(0, 2), class = "b", coef = "me_pre") + 
+          prior(normal(0, 1), class = "b", coef = "raw_accuracy") + 
+          prior(normal(0, 10), class = "Intercept") + 
+          prior(student_t(4, 0, 3), class = "sigma"),
+  seed = 941,
+  iter = 4000,
+  file = "m2"
+)
+```
+
+## Results
+
+The chains mixed well.
+
+```{r m2 results}
+summary(m2)
+
+color_scheme_set("darkgray")
+pp_check(m2)
+
+draws_df_m2 <- as_draws_df(m2)
+mcmc_trace(draws_df_m2, pars = c("b_Intercept", "b_me_pre", "b_raw_accuracy", "sigma"))
+```
+
+```{r m2 table, posterior summary}
+#| tbl-cap: Posterior summary of the model parameters.
+
+# Convert the model to draws
+draws <- as_draws(m2)
+
+# Summarize the draws for the selected parameters
+summ_fit2 <- draws |> 
+  subset_draws(variable = c("b_Intercept", "b_me_pre", "b_raw_accuracy", "sigma")) |> 
+  summarise_draws()
+
+write.csv(summ_fit2, "summ_fit2.csv", row.names = FALSE)
+
+# Create a summary table with knitr
+knitr::kable(summ_fit2, digits = 2)
+```
+
+```{r}
+p2 <- pp_check(m2, type = "intervals",
+         x = "raw_accuracy") +
+    geom_smooth(se = FALSE, col = "blue") +
+    geom_smooth(aes(y = y_obs), se = FALSE, col = "red", linetype = "dashed")
+
+p3 <- pp_check(m2, type = "intervals",
+         x = "me_pre") +
+    geom_smooth(se = FALSE, col = "blue") +
+    geom_smooth(aes(y = y_obs), se = FALSE, col = "red", linetype = "dashed")
+
+m2_combined <- p2 + p3
+
+m2_combined
+```
+
+# Model 3 Analysis
+
+```{r m3 analysis}
+m3 <- brm(
+  ramyg_change ~ raw_accuracy + me_pre ,
+  data = faces,
+  prior = prior(normal(0, 2), class = "b", coef = "me_pre") + 
+          prior(normal(0, 1), class = "b", coef = "raw_accuracy") + 
+          prior(normal(0, 10), class = "Intercept") + 
+          prior(student_t(4, 0, 3), class = "sigma"),
+  seed = 941,
+  iter = 4000,
+  file = "m3"
+)
+```
+
+## Results
+
+The chains mixed well.
+
+```{r m3 results}
+summary(m3)
+
+color_scheme_set("darkgray")
+pp_check(m3)
+
+draws_df_m3 <- as_draws_df(m3)
+mcmc_trace(draws_df_m3, pars = c("b_Intercept", "b_me_pre", "b_raw_accuracy", "sigma"))
+```
+
+```{r m3 table, posterior summary}
+#| tbl-cap: Posterior summary of the model parameters.
+
+# Convert the model to draws
+draws <- as_draws(m3)
+
+# Summarize the draws for the selected parameters
+summ_fit3 <- draws |> 
+  subset_draws(variable = c("b_Intercept", "b_me_pre", "b_raw_accuracy", "sigma")) |> 
+  summarise_draws()
+
+write.csv(summ_fit3, "summ_fit3.csv", row.names = FALSE)
+
+# Create a summary table with knitr
+knitr::kable(summ_fit3, digits = 2)
+```
+
+```{r}
+p4 <- pp_check(m3, type = "intervals",
+         x = "raw_accuracy") +
+    geom_smooth(se = FALSE, col = "blue") +
+    geom_smooth(aes(y = y_obs), se = FALSE, col = "red", linetype = "dashed")
+
+p5 <- pp_check(m3, type = "intervals",
+         x = "me_pre") +
+    geom_smooth(se = FALSE, col = "blue") +
+    geom_smooth(aes(y = y_obs), se = FALSE, col = "red", linetype = "dashed")
+
+m3_combined <- p4 + p5
+
+m3_combined
+```
+
+
+```{r}
+# save plots 
+
+save_plot <- function(plot, filename, width = 10, height = 6) {
+  ggsave(filename = filename, plot = plot, width = width, height = height, dpi = 300)
+}
+
+# Save plots from different models
+
+# Model 1 plots
+ggsave("m1_pp_check.png", pp_check(m1), width = 10, height = 6, dpi = 300)
+ggsave("m1_marginal_plot.png", 
+        pp_check(m1, type = "intervals", x = "me_pre") +
+        geom_smooth(se = FALSE, col = "blue") +
+        geom_smooth(aes(y = y_obs), se = FALSE, col = "red", linetype = "dashed"), 
+        width = 10, height = 6, dpi = 300)
+
+png("m1_trace_plot.png", width = 10, height = 6, units = "in", res = 300)
+mcmc_trace(draws_df_m1, pars = c("b_Intercept", "b_me_pre", "sigma"))
+dev.off()
+
+# Model 2 plots
+ggsave("m2_pp_check.png", pp_check(m2), width = 10, height = 6, dpi = 300)
+ggsave("m2_combined_plot.png", m2_combined, width = 16, height = 6, dpi = 300)
+
+png("m2_trace_plot.png", width = 10, height = 6, units = "in", res = 300)
+mcmc_trace(draws_df_m2, pars = c("b_Intercept", "b_me_pre", "b_lamyg_mean_prenat", "sigma"))
+dev.off()
+
+# Model 3 plots
+ggsave("m3_pp_check.png", pp_check(m3), width = 10, height = 6, dpi = 300)
+ggsave("m3_combined_plot.png", m3_combined, width = 16, height = 6, dpi = 300)
+
+png("m3_trace_plot.png", width = 10, height = 6, units = "in", res = 300)
+mcmc_trace(draws_df_m3, pars = c("b_Intercept", "b_me_pre", "b_ramyg_mean_prenat", "sigma"))
+dev.off()
+
